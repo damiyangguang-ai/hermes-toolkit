@@ -142,8 +142,16 @@ def main() -> int:
         check("authz_list 可读", (not ok) and "authorizations" in payload, str(payload)[:200])
 
         ok, payload = client.call("hfk_exprdiag", {})
-        check("exprdiag 返回层数", (not ok) and payload.get("layers", 0) > 0, str(payload)[:200])
-        check("exprdiag 结论非空", bool(payload.get("conclusion")), str(payload)[:200])
+        # CI 与没有 Hermes 的机器上，诊断应当返回**结构化的"未执行"**而不是崩溃。
+        if payload.get("unsupported_environment") in ("no_hermes_home", "exprdiag_missing"):
+            check(
+                "exprdiag 无 Hermes 环境时返回结构化说明",
+                (not ok) and bool(payload.get("reason") or payload.get("error")),
+                str(payload)[:200],
+            )
+        else:
+            check("exprdiag 返回层数", (not ok) and payload.get("layers", 0) > 0, str(payload)[:200])
+            check("exprdiag 结论非空", bool(payload.get("conclusion")), str(payload)[:200])
 
         # 未授权目标：任务必须只排被动步骤（授权闸门不可被 agent 绕过）
         ok, payload = client.call(

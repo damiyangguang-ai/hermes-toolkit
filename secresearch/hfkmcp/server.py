@@ -224,23 +224,49 @@ def tool_authz_list(args: dict[str, Any]) -> str:
 
 
 def tool_exprdiag(args: dict[str, Any]) -> str:
-    # 延迟导入：ExprDiag 是另一个包，找不到时给明确错误而不是崩溃
-    exprdiag_root = Path(os.environ.get("EXPRDIAG_DIR", str(_ROOT.parent / "ExprDiag")))
+    # 延迟导入：ExprDiag 是另一个包，找不到时给明确错误而不是崩溃。
+    # 目录名兼容 monorepo（exprdiag 小写）与独立仓库（ExprDiag）两种布局；
+    # Linux 区分大小写，写死 "ExprDiag" 会让 CI 直接导入失败。
+    candidates = [
+        os.environ.get("EXPRDIAG_DIR", ""),
+        str(_ROOT.parent / "exprdiag"),
+        str(_ROOT.parent / "ExprDiag"),
+    ]
+    exprdiag_root = None
+    for candidate in candidates:
+        if candidate and (Path(candidate) / "exprdiag" / "inspect.py").is_file():
+            exprdiag_root = Path(candidate)
+            break
+    if exprdiag_root is None:
+        return _json(
+            {"error": "找不到 exprdiag 包", "unsupported_environment": "exprdiag_missing"}
+        )
     if str(exprdiag_root) not in sys.path:
         sys.path.insert(0, str(exprdiag_root))
     try:
         from exprdiag.inspect import diagnose, render_markdown  # noqa: PLC0415
     except ImportError as exc:
-        return _json({"error": f"无法导入 exprdiag（{exc}）。设置 EXPRDIAG_DIR 指向其在磁盘上的目录"})
+        return _json({"error": f"无法导入 exprdiag（{exc}）"})
 
     home = os.environ.get("LOCALAPPDATA")
     home_path = Path(home) / "hermes" if home else None
     if home_path is None or not home_path.exists():
-        return _json({"error": "找不到 Hermes Home（LOCALAPPDATA 未设置）"})
+        # 没有 Hermes 安装是**正常环境**（CI、其他机器），不是错误。
+        # 明确标注，让调用方知道"没测"而不是"没限制"。
+        return _json(
+            {
+                "available": False,
+                "unsupported_environment": "no_hermes_home",
+                "reason": "本机没有 Hermes Home（LOCALAPPDATA/hermes 不存在），无法做提示层诊断",
+                "layers": 0,
+                "conclusion": ["未执行诊断：环境中不存在 Hermes 安装"],
+            }
+        )
     install = home_path / "hermes-agent"
     report = diagnose(home_path, install if install.exists() else None)
     return _json(
         {
+            "available": True,
             "layers": len(report.layers),
             "restriction_hits": len([i for i in report.findings if i.get("kind") == "restriction"]),
             "conflicts": report.conflicts,
