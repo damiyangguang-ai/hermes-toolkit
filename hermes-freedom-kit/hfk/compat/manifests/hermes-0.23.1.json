@@ -1,0 +1,62 @@
+{
+  "manifest_version": 1,
+  "hermes_version": "0.23.1",
+  "family": "0.23.x",
+  "verified_at": "2026-11-16",
+  "verified_against": {
+    "install_dir": "C:\\Users\\Administrator\\AppData\\Local\\hermes\\hermes-agent",
+    "git_tag": "v0.23.1",
+    "commit": "3b421578588243f920886e6fe79a6faa87ea026e",
+    "install_stamp_base_version": "0.23.1",
+    "gateway_code_version": "0.23.1",
+    "desktop_package_json_version": "0.0.0",
+    "note": "apps/desktop/package.json 是占位版本 0.0.0，已按设计忽略"
+  },
+  "approval_entrypoints": {
+    "cli": "tools/approval.py",
+    "floors": "tools/approval_floors.py",
+    "detection": "tools/approval_detection.py",
+    "context": "tools/approval_context.py",
+    "gateway_wait": "tools/approval_gateway_wait.py",
+    "yolo": "tools/approval_yolo.py",
+    "smart": "tools/approval_smart.py",
+    "approval_config_defaults": "hermes_cli/config_defaults.py (DEFAULT_CONFIG['approvals'])",
+    "config_writer_primitive": "utils.py:atomic_roundtrip_yaml_update",
+    "config_key_writer": "hermes_cli/config_backend.py:write_config_key",
+    "yaml_policy": "hermes_yaml.py:roundtrip_yaml"
+  },
+  "supported_fields": [
+    "approvals.mode",
+    "approvals.timeout",
+    "approvals.cron_mode",
+    "approvals.single_query_mode",
+    "approvals.unattended_mode",
+    "approvals.destructive_slash_confirm",
+    "approvals.mcp_reload_confirm",
+    "approvals.discord_prompt_timeout",
+    "approvals.denial_breaker_threshold",
+    "command_allowlist",
+    "approvals.smart_policy",
+    "approvals.deny",
+    "approvals.approvers",
+    "delegation.subagent_auto_approve",
+    "hooks_auto_accept",
+    "memory.write_approval",
+    "skills.write_approval"
+  ],
+  "mode_values": ["manual", "smart", "off"],
+  "binary_mode_values": ["deny", "approve"],
+  "hot_reload": {
+    "mechanism": "config cache keyed on file signature (hermes_cli/config.py:_load_config_cache_sig)",
+    "effect": "写入 config.yaml 后，各进程下一次读取即生效，无需重启网关",
+    "cli_watcher_interval_seconds": 5.0
+  },
+  "known_issues": [
+    "approvals.mode 与 cron_mode/single_query_mode/unattended_mode 的取值域不同：前者 manual|smart|off，后三者只能是 deny|approve。混用会被拒绝。",
+    "approvals.mode 的默认值是 smart，不是 manual；不要把 manual 当作「默认」。",
+    "approvals.timeout 的默认值是 300 秒，本机用户已改为 60。",
+    "mode=off（即 --yolo）并不解除 HARDLINE 硬阻断，也不解除 approvals.deny。",
+    "command_allowlist 存的是「危险命令类别标签」，不是命令原文；加入即永久跳过该类检测。",
+    "辅助审批模型（auxiliary.approval.*）含 API Key，HFK 不读取、不写入。"
+  ]
+}

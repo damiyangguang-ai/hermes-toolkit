@@ -1,0 +1,56 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python: ["3.11", "3.12"]
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+
+      - name: Install ruamel.yaml (Hermes Freedom Kit)
+        run: python -m pip install "ruamel.yaml>=0.18,<0.19"
+
+      - name: Hermes Freedom Kit
+        working-directory: hermes-freedom-kit
+        env:
+          PYTHONPATH: ${{ github.workspace }}/hermes-freedom-kit
+        run: python -m unittest discover -s tests -v
+
+      - name: SecResearch
+        working-directory: secresearch
+        env:
+          PYTHONPATH: ${{ github.workspace }}/secresearch
+        run: python -m unittest discover -s tests -v
+
+      - name: ExprDiag
+        working-directory: exprdiag
+        env:
+          PYTHONPATH: ${{ github.workspace }}/exprdiag
+        run: python -m unittest discover -s tests -v
+
+      - name: MCP protocol test
+        working-directory: secresearch
+        env:
+          PYTHONPATH: ${{ github.workspace }}/secresearch
+        run: python -m hfkmcp.test_client
+
+      - name: Plugin render smoke
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run render smoke
+        working-directory: hermes-freedom-kit/desktop-plugin
+        run: node rendercheck/render.test.mjs plugin.js

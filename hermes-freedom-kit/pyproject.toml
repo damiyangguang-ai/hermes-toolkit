@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hermes-freedom-kit"
+version = "0.1.0"
+description = "HFK (Hermes Freedom Kit) — a real, reversible host patcher for Hermes local approval policy"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "Proprietary" }
+dependencies = [
+    # 与 Hermes 0.23.1 使用同一 YAML 引擎与同一大版本，保证写出的 config.yaml 与其自身写入器字节一致。
+    "ruamel.yaml>=0.18.16,<0.20",
+]
+
+[project.scripts]
+hfk = "hfk.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["hfk*"]
+
+[tool.setuptools.package-data]
+hfk = ["compat/manifests/*.json"]
