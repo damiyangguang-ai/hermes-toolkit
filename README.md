@@ -1,5 +1,10 @@
 # hermes-toolkit
 
+[![CI](https://github.com/damiyangguang-ai/hermes-toolkit/actions/workflows/ci.yml/badge.svg)](https://github.com/damiyangguang-ai/hermes-toolkit/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/)
+[![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux-lightgrey.svg)](#)
+
 围绕 **Hermes Agent** 的三个工具，合在一个仓库里：
 
 | 目录 | 做什么 |
