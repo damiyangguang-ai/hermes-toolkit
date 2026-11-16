@@ -8,6 +8,7 @@
 
 from __future__ import annotations
 
+import os
 import shutil
 import tempfile
 import unittest
@@ -19,6 +20,7 @@ from hfk.config.keypath import (
     join_key_path,
     split_key_path,
 )
+from hfk.config.yaml_io import atomic_write_text
 from hfk.engine import patch
 from hfk.errors import ConfigValidationError, SignatureError, UnsupportedVersionError
 from hfk.facade import HFK
@@ -339,6 +341,43 @@ class TestTokenFilePermissions(TempDirMixin):
                 self.assertNotIn("(I)", output, f"仍存在继承权限：\n{output}")
         finally:
             service.stop()
+
+
+class TestNewlinePreservation(TempDirMixin):
+    """换行风格必须**按目标文件保留**，不能依赖平台默认。
+
+    真实缺陷：``atomic_write_text`` 原实现用 ``newline=None``（平台默认），
+    Windows 上恰好写出 CRLF 与 Hermes 一致，**Linux 上却把 CRLF 改写成 LF**，
+    导致"恢复后字节一致"这条核心承诺在非 Windows 平台直接破功。
+    CI 在 ubuntu 上把这个 bug 暴露出来。（回归测试由该事故添加。）
+    """
+
+    def _roundtrip(self, original: bytes) -> bytes:
+        path = self._work / "config.yaml"
+        path.write_bytes(original)
+        text = original.decode("utf-8").replace("\r\n", "\n")
+        atomic_write_text(path, text + "extra: 1\n")
+        return path.read_bytes()
+
+    def test_lf_file_stays_lf_on_any_platform(self):
+        result = self._roundtrip(b"approvals:\n  mode: smart\n")
+        self.assertNotIn(b"\r\n", result, "LF 输入被改写成了 CRLF")
+        self.assertIn(b"extra: 1", result)
+
+    def test_crlf_file_stays_crlf_on_any_platform(self):
+        result = self._roundtrip(b"approvals:\r\n  mode: smart\r\n")
+        self.assertIn(b"\r\n", result, "CRLF 输入被改写成了 LF")
+        self.assertNotIn(b"\r\r\n", result, "出现了双重回车")
+
+    def test_missing_file_uses_platform_default(self):
+        path = self._work / "brand-new.yaml"
+        atomic_write_text(path, "a: 1\n")
+        raw = path.read_bytes()
+        self.assertIn(b"a: 1", raw)
+        if os.linesep == "\r\n":
+            self.assertIn(b"\r\n", raw)
+        else:
+            self.assertNotIn(b"\r\n", raw)
 
 
 if __name__ == "__main__":

@@ -5,6 +5,13 @@ on:
     branches: [main]
   pull_request:
 
+# Windows runner 的默认控制台编码是 cp1252，直接打印中文/符号会 UnicodeEncodeError
+# （真实踩过：SecResearch 的 Windows 组合因此全红）。这里强制 UTF-8。
+env:
+  PYTHONUTF8: "1"
+  PYTHONIOENCODING: utf-8
+  PYTHONUNBUFFERED: "1"
+
 jobs:
   test:
     runs-on: ${{ matrix.os }}
@@ -19,6 +26,9 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
 
       - name: Install ruamel.yaml (Hermes Freedom Kit)
         run: python -m pip install "ruamel.yaml>=0.18,<0.19"
@@ -48,9 +58,5 @@ jobs:
         run: python -m hfkmcp.test_client
 
       - name: Plugin render smoke
-        uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-      - name: Run render smoke
         working-directory: hermes-freedom-kit/desktop-plugin
         run: node rendercheck/render.test.mjs plugin.js

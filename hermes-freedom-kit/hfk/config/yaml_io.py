@@ -18,6 +18,7 @@
 from __future__ import annotations
 
 import contextlib
+import io
 import os
 import tempfile
 import time
@@ -199,6 +200,37 @@ def _replace_with_retry(tmp: Path, target: Path) -> Path:
     return real
 
 
+def _detect_newline(path: Path) -> str:
+    """检测文件现有的换行风格，返回 ``"\\r\\n"`` / ``"\\n"`` 或空串（无法判断）。
+
+    为什么必须检测而不能用平台默认：
+      HFK 的核心承诺是「恢复后与改动前**字节一致**」。若写入时依赖平台默认换行，
+      Windows 上 CRLF 恰好对得上，**Linux/macOS 上就会把 CRLF 变成 LF**，
+      字节一致性直接破功（这是 CI 在 ubuntu 上暴露出来的真实缺陷）。
+    """
+    try:
+        raw = path.read_bytes()[:65536]
+    except OSError:
+        return ""
+    crlf = raw.count(b"\r\n")
+    lone_lf = raw.count(b"\n") - crlf
+    if crlf and crlf >= lone_lf:
+        return "\r\n"
+    if lone_lf:
+        return "\n"
+    if crlf:
+        return "\r\n"
+    return ""
+
+
+def _apply_newline(text: str, newline: str) -> str:
+    """把文本统一成目标换行风格（先归一化再展开，避免出现 ``\\r\\r\\n``）。"""
+    normalized = text.replace("\r\n", "\n").replace("\r", "\n")
+    if newline == "\n":
+        return normalized
+    return normalized.replace("\n", newline)
+
+
 def atomic_write_text(
     path: str | Path,
     text: str,
@@ -208,11 +240,15 @@ def atomic_write_text(
 ) -> None:
     """同目录临时文件 + fsync + 原子替换地写入文本。
 
-    ``newline=None`` 表示使用平台默认换行——Windows 上即 CRLF，
-    与 Hermes 自己写 config.yaml 的形态一致（实测其文件 100% 为 CRLF）。
+    ``newline=None``（默认）表示**保留目标文件现有的换行风格**；
+    文件不存在时才退回平台默认（Windows CRLF / POSIX LF）。
+    这样「改动 → 恢复」在任何平台上都能字节一致。
     """
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
+
+    effective = newline if newline is not None else (_detect_newline(path) or os.linesep)
+    payload = _apply_newline(text, effective)
 
     mode: int | None = None
     if path.exists():
@@ -224,8 +260,9 @@ def atomic_write_text(
     )
     tmp = Path(tmp_name)
     try:
-        with os.fdopen(fd, "w", encoding="utf-8-sig" if add_bom else "utf-8", newline=newline) as handle:
-            handle.write(text)
+        # newline="" 关闭平台转换，换行由 payload 自己决定（上面已按目标风格展开）
+        with os.fdopen(fd, "w", encoding="utf-8-sig" if add_bom else "utf-8", newline="") as handle:
+            handle.write(payload)
             handle.flush()
             os.fsync(handle.fileno())
         replaced = _replace_with_retry(tmp, path)
@@ -266,6 +303,10 @@ def atomic_write_bytes(path: str | Path, payload: bytes) -> None:
 def _dump_to_file(path: Path, yaml_rt: YAML, document: Any, *, extra_content: str | None) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
 
+    # 与 atomic_write_text 同一策略：保留目标文件既有换行风格，
+    # 否则在非 Windows 平台上会把 CRLF 改写成 LF，破坏字节一致性。
+    effective = _detect_newline(path) or os.linesep
+
     mode: int | None = None
     if path.exists():
         with contextlib.suppress(OSError):
@@ -276,10 +317,13 @@ def _dump_to_file(path: Path, yaml_rt: YAML, document: Any, *, extra_content: st
     )
     tmp = Path(tmp_name)
     try:
-        with os.fdopen(fd, "w", encoding="utf-8", newline=None) as handle:
-            yaml_rt.dump(document, handle)
-            if extra_content:
-                handle.write(extra_content)
+        buffer = io.StringIO()
+        yaml_rt.dump(document, buffer)
+        if extra_content:
+            buffer.write(extra_content)
+        payload = _apply_newline(buffer.getvalue(), effective)
+        with os.fdopen(fd, "w", encoding="utf-8", newline="") as handle:
+            handle.write(payload)
             handle.flush()
             os.fsync(handle.fileno())
         replaced = _replace_with_retry(tmp, path)
